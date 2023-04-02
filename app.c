@@ -6,25 +6,25 @@
 #include <stdio.h>
 
 // Heartbeat message status
-#define heartbeat_id = 0x701
-#define Initialization = 0x00
-#define Pre_Operational = 0x01 
-#define Operational; = 0x02
+#define HEARTBEAT_ID = 0x701
+#define INITIALIZATION_STATE = 0x00
+#define PRE_OPERATIONAL_STATE = 0x01 
+#define OPERATIONAL_STATE; = 0x02
 
 // Charge Command
-#define incoming_id = 0x201 
-#define stop = 0x00
-#define start = 0x01
+#define INCOMING_ID = 0x201 
+#define STOP = 0x00
+#define START = 0x01
 
 // Charging Status
-#define outgoing_id = 0x181
-#define not_charging = 0x00
-#define charging = 0x01
+#define OUTGOING_ID = 0x181
+#define NOT_CHARGING = 0x00
+#define CHARGING = 0x01
 
 // variables and status
 bool enable_command;
 uint8_t chargingState;
-uint8_t networkManagementState;
+uint8_t networkState;
 uint16_t current_reference; 
 uint16_t current_feedback; 
 uint16_t current_minimum;
@@ -53,14 +53,14 @@ typedef enum
     INITIALIZATION = 0,
     PRE_OPERATIONAL, 
     OPERATIONAL
-} NETWORK_STATE
+} NETWORK_STATE;
 
 typedef enum
 {
     IDLE = 0,
     CONSTANT_CURRENT,
     CONSTANT_VOLTAGE
-} CHARGING_STATE
+} CHARGING_STATE;
 
 void CAN_write(CAN_msg_typedef *msg);
 bool CAN_read(CAN_msg_typedef *msg); //return true if there is received msg
@@ -117,14 +117,14 @@ bool IsTimePassed(uint32_t *timerCounter, uint32_t time)
 
 void build_heartbeat_message(uint8_t state)
 {
-    Can_tx.ID = heartbeat_id; 
+    Can_tx.ID = HEARTBEAT_ID; 
     Can_tx.Length = 1; 
     Can_tx.Data[0] = state;
 }
 
 void build_outgoing_message(uint8_t status)
 {
-    Can_tx.ID = outgoing_id;
+    Can_tx.ID = OUTGOING_ID;
     Can_tx.Length = 4; 
     Can_tx.Data[0] = (uint8_t)(voltage_feedback);
     Can_tx.Data[1] = (uint8_t)(voltage_feedback >> 8);
@@ -141,11 +141,11 @@ void parse_incoming_message()
     current_reference = (uint16_t)(Can_rx.Data[2]);
     current_reference |= (uint16_t)(Can_rx.Data[3] << 8);
     charge_command = Can_rx.Data[4];
-    if (charge_command == start)
+    if (charge_command == START)
     {
         enable_command = true;
     }
-    else if (charge_command == stop)
+    else if (charge_command == STOP)
     {
         enable_command = false;
     }
@@ -175,15 +175,13 @@ void main_state_machine(void)
         
         case CONSTANT_VOLTAGE:
             PI_voltage_control();
-            if(current_feedback == minimum_current)
+            if(current_feedback == current_minimum)
             {
                 chargingState = IDLE;
                 enable_command = false; 
             }
             break;
         
-        default:
-            break;
     }
 }
 
@@ -194,7 +192,7 @@ void network_management(void)
     {
         // send heartbeat message
         build_heartbeat_message(networkState);
-        CAN_write(Can_tx);
+        CAN_write(&Can_tx);
         heartbeatTimer = time_ms;
     }
     
@@ -203,8 +201,8 @@ void network_management(void)
         case INITIALIZATION:
             //wait device boot up and initialization
             // send heartbeat message
-            build_heartbeat_message(Initialization);
-            CAN_write(Can_tx);
+            build_heartbeat_message(INITIALIZATION_STATE);
+            CAN_write(&Can_tx);
             // start heartbeat message time counter
             heartbeatTimer = time_ms;
             networkState = PRE_OPERATIONAL;
@@ -212,7 +210,7 @@ void network_management(void)
         
         case PRE_OPERATIONAL:
             // check incoming message
-            if(CAN_read(Can_rx) == true)
+            if(CAN_read(&Can_rx) == true)
             {
                 parse_incoming_message();
                 if(enable_command == true)
@@ -229,8 +227,8 @@ void network_management(void)
             if(outgoingMsgTimer == 0)
             {
                 // send first outgoing message
-                build_outgoing_message(charging);
-                CAN_write(Can_tx);
+                build_outgoing_message(CHARGING);
+                CAN_write(&Can_tx);
                 outgoingMsgTimer = time_ms;
             }
             else
@@ -241,20 +239,20 @@ void network_management(void)
                     // send outgoing message
                     if (enable_command == true)
                     {
-                        chargingStatus = charging;
+                        chargingStatus = CHARGING;
                     }
                     else
                     {
-                        chargingStatus = not_charging;
+                        chargingStatus = NOT_CHARGING;
                     }
                     build_outgoing_message(chargingStatus);
-                    CAN_write(Can_tx);
+                    CAN_write(&Can_tx);
                     outgoingMsgTimer = time_ms;
                 }   
             }
 
             // check incoming message
-            if(CAN_read(Can_rx) == true)
+            if(CAN_read(&Can_rx) == true)
             {
                 parse_incoming_message();
                 if(enable_command == false)
